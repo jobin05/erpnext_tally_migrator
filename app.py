@@ -49,7 +49,6 @@ def get_accounts(company):
     response = requests.post(TALLY_PATH, data=account_query.format(company))
     response = bs(response.text, "xml")
     collection = response.ENVELOPE.BODY.DATA.COLLECTION
-    print(collection)
     accounts = collection.find_all("LEDGER")
     account_list = []
     for account in accounts:
@@ -60,7 +59,6 @@ def get_group_accounts(company):
     response = requests.post(TALLY_PATH, data=group_account_query.format(company))
     response = bs(response.text, "xml")
     collection = response.ENVELOPE.BODY.DATA.COLLECTION
-    print(collection)
     accounts = collection.find_all("GROUP")
     account_list = []
     for account in accounts:
