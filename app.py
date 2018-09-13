@@ -3,7 +3,7 @@ import sys
 from xml.etree import ElementTree as ET
 from bs4 import BeautifulSoup as bs
 import requests
-from queries import account_query, company_query
+from queries import account_query, company_query, group_account_query
 
 TALLY_HOST = sys.argv[1]
 TALLY_PORT = sys.argv[2] if len(sys.argv) == 3 else 9000
@@ -24,6 +24,8 @@ def main():
                 # Should be chosen from UI
                 company = companies[1]
                 logging.info("Choosing company : {}".format(company))
+                group_accounts = get_group_accounts(company)
+                logging.info("Group Accounts Found : {}".format(len(group_accounts)))
                 accounts = get_accounts(company)
                 logging.info("Accounts Found : {}".format(len(accounts)))
             else:
@@ -49,6 +51,17 @@ def get_accounts(company):
     collection = response.ENVELOPE.BODY.DATA.COLLECTION
     print(collection)
     accounts = collection.find_all("LEDGER")
+    account_list = []
+    for account in accounts:
+        account_list.append(account.NAME.string)
+    return account_list
+
+def get_group_accounts(company):
+    response = requests.post(TALLY_PATH, data=group_account_query.format(company))
+    response = bs(response.text, "xml")
+    collection = response.ENVELOPE.BODY.DATA.COLLECTION
+    print(collection)
+    accounts = collection.find_all("GROUP")
     account_list = []
     for account in accounts:
         account_list.append(account.NAME.string)
