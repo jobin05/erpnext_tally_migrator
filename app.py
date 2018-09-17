@@ -24,10 +24,9 @@ def main():
                 # Should be chosen from UI
                 company = companies[1]
                 logging.info("Choosing company : {}".format(company))
-                group_accounts = get_group_accounts(company)
-                logging.info("Group Accounts Found : {}".format(len(group_accounts)))
-                accounts = get_accounts(company)
-                logging.info("Accounts Found : {}".format(len(accounts)))
+
+                # Hardcoding connection details for now
+                session = connect_to_erpnext("http://erpnext.local:8000", "Administrator", "admin")
             else:
                 logging.warning("No Companies Found")
     except:
@@ -64,5 +63,21 @@ def get_group_accounts(company):
     for account in accounts:
         account_list.append(account.NAME.string)
     return account_list
+
+def connect_to_erpnext(server_path, username, password):
+    session = requests.Session()
+    response = session.post(server_path,
+        data={
+            'cmd': 'login',
+            'usr': username,
+            'pwd': password
+        }
+    )
+    if response.status_code == 200:
+        data = response.json()
+        logging.info("Logged in as {}".format(data["full_name"]))
+        return session
+    else:
+        logging.warning("Login failed")
 
 main()
