@@ -22,7 +22,7 @@ account_query = """
         <VERSION>1</VERSION>
         <TALLYREQUEST>Export</TALLYREQUEST>
         <TYPE>Collection</TYPE>
-        <ID>Ledger</ID>
+        <ID>New Group</ID>
     </HEADER>
     <BODY>
         <DESC>
@@ -30,6 +30,16 @@ account_query = """
                 <SVCURRENTCOMPANY>{}</SVCURRENTCOMPANY>
                 <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
             </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <COLLECTION Name="New Group">
+                        <TYPE>Ledger</TYPE>
+                        <NATIVEMETHOD>Parent</NATIVEMETHOD>
+                        <NATIVEMETHOD>Is Deemed Positive</NATIVEMETHOD>
+                        <NATIVEMETHOD>Is Revenue</NATIVEMETHOD>
+                    </COLLECTION>
+                </TDLMESSAGE>
+            </TDL>
         </DESC>
     </BODY>
 </ENVELOPE>
@@ -41,7 +51,7 @@ group_account_query = """
         <VERSION>1</VERSION>
         <TALLYREQUEST>Export</TALLYREQUEST>
         <TYPE>Collection</TYPE>
-        <ID>Group</ID>
+        <ID>New Group</ID>
     </HEADER>
     <BODY>
         <DESC>
@@ -49,6 +59,17 @@ group_account_query = """
                 <SVCURRENTCOMPANY>{}</SVCURRENTCOMPANY>
                 <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
             </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <COLLECTION Name="New Group">
+                        <TYPE>Group</TYPE>
+                        <NATIVEMETHOD>Parent</NATIVEMETHOD>
+                        <NATIVEMETHOD>Is Deemed Positive</NATIVEMETHOD>
+                        <NATIVEMETHOD>Is Revenue</NATIVEMETHOD>
+                        <NATIVEMETHOD>Depth</NATIVEMETHOD>
+                    </COLLECTION>
+                </TDLMESSAGE>
+            </TDL>
         </DESC>
     </BODY>
 </ENVELOPE>
