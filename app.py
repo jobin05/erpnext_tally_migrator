@@ -97,7 +97,7 @@ def get_erpnext_companies(session):
 
 def migrate_company(session, tally_company, erpnext_company):
     logging.info("Migrate Chart of Accounts")
-    migrate_chart_of_accounts(session, tally_company, erpnext_company)
+    #migrate_chart_of_accounts(session, tally_company, erpnext_company)
     logging.info("Migrated Chart of Accounts")
 
     logging.info("Migrate Vouchers")
@@ -133,10 +133,12 @@ def migrate_chart_of_accounts(session, tally_company, erpnext_company):
 
 def migrate_vouchers(session, tally_company, erpnext_company):
     logging.info("Querying Tally Voucher Count")
-    voucher_count = get_voucher_count(tally_company)
+    #voucher_count = get_voucher_count(tally_company)
+    voucher_count = 96221
     logging.info("Tally Vocuhers Found : {}".format(voucher_count))
 
-    for start_date, end_date in get_date_segments(tally_company, voucher_count):
+    #for start_date, end_date in get_date_segments(tally_company, voucher_count):
+    for start_date, end_date in [(1,1)]:
         logging.info("Querying Tally Vouchers for {} to {}".format(start_date, end_date))
         vouchers = get_vouchers(tally_company, start_date, end_date)
         logging.info("Tally Vouchers Found : {}".format(len(vouchers)))
@@ -258,6 +260,7 @@ def get_vouchers(tally_company, start_date, end_date):
             voucher_type_mapping = {
                 "Journal": transform_journal_voucher,
                 "Sales": transform_sales_voucher,
+                "Purchase": transform_purchase_voucher,
             }
             function = voucher_type_mapping.get(voucher.VOUCHERTYPENAME.string)
             if function:
@@ -306,6 +309,28 @@ def transform_sales_voucher(xml):
         accounts.append(account)
     voucher = {
         "voucher_type": "Sales",
+        "guid": xml.GUID.string,
+        "posting_date": xml.DATE.string,
+        "accounts": accounts,
+    }
+    return voucher
+
+
+def transform_purchase_voucher(xml):
+    accounts = []
+    for ledger_entry in xml.find_all("LEDGERENTRIES.LIST"):
+        account = {
+            "account": ledger_entry.LEDGERNAME.string,
+            "is_party": ledger_entry.ISPARTYLEDGER.string == "Yes",
+        }
+        amount = Decimal(ledger_entry.AMOUNT.string)
+        if amount > 0:
+            account["credit_in_account_currency"] = str(abs(amount))
+        else:
+            account["debit_in_account_currency"] = str(abs(amount))
+        accounts.append(account)
+    voucher = {
+        "voucher_type": "Purchase",
         "guid": xml.GUID.string,
         "posting_date": xml.DATE.string,
         "accounts": accounts,
