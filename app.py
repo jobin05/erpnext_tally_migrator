@@ -257,6 +257,7 @@ def get_vouchers(tally_company, start_date, end_date):
                 continue
             voucher_type_mapping = {
                 "Journal": transform_journal_voucher,
+                "Sales": transform_sales_voucher,
             }
             function = voucher_type_mapping.get(voucher.VOUCHERTYPENAME.string)
             if function:
@@ -283,6 +284,28 @@ def transform_journal_voucher(xml):
         accounts.append(account)
     voucher = {
         "voucher_type": "Journal",
+        "guid": xml.GUID.string,
+        "posting_date": xml.DATE.string,
+        "accounts": accounts,
+    }
+    return voucher
+
+
+def transform_sales_voucher(xml):
+    accounts = []
+    for ledger_entry in xml.find_all("LEDGERENTRIES.LIST"):
+        account = {
+            "account": ledger_entry.LEDGERNAME.string,
+            "is_party": ledger_entry.ISPARTYLEDGER.string == "Yes",
+        }
+        amount = Decimal(ledger_entry.AMOUNT.string)
+        if amount > 0:
+            account["credit_in_account_currency"] = str(abs(amount))
+        else:
+            account["debit_in_account_currency"] = str(abs(amount))
+        accounts.append(account)
+    voucher = {
+        "voucher_type": "Sales",
         "guid": xml.GUID.string,
         "posting_date": xml.DATE.string,
         "accounts": accounts,
