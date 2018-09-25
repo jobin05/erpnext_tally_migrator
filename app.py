@@ -2,11 +2,13 @@ import json
 import logging
 import re
 import sys
+from datetime import datetime, timedelta
+from decimal import Decimal
 from itertools import chain
 from operator import itemgetter
 from bs4 import BeautifulSoup as bs
 import requests
-from queries import account_query, company_query, group_account_query
+from queries import account_query, company_query, company_period_query, group_account_query, voucher_count_query, voucher_register_query
 
 
 TALLY_HOST = sys.argv[1]
@@ -98,6 +100,10 @@ def migrate_company(session, tally_company, erpnext_company):
     migrate_chart_of_accounts(session, tally_company, erpnext_company)
     logging.info("Migrated Chart of Accounts")
 
+    logging.info("Migrate Vouchers")
+    migrate_vouchers(session, tally_company, erpnext_company)
+    logging.info("Migrated Vouchers")
+
 
 def migrate_chart_of_accounts(session, tally_company, erpnext_company):
     logging.info("Querying Tally Group accounts")
@@ -105,15 +111,43 @@ def migrate_chart_of_accounts(session, tally_company, erpnext_company):
     logging.info("Tally Group Accounts Found : {}".format(len(group_accounts)))
 
     logging.info("Querying Tally Non-Group accounts")
-    non_group_accounts = get_accounts(tally_company)
+    non_group_accounts, parties = get_accounts(tally_company)
     logging.info("Tally Non-Group Accounts Found : {}".format(len(non_group_accounts)))
+    logging.info("Tally Parties Found : {}".format(len(parties)))
 
     all_accounts = group_accounts + non_group_accounts
     logging.info("Sending all accounts")
-    session.post("{}/api/method/erpnext.erpnext_integrations.tally_migration.create_chart_of_accounts".format(ERPNEXT_PATH),
+    response = session.post("{}/api/method/erpnext.erpnext_integrations.tally_migration.create_chart_of_accounts".format(ERPNEXT_PATH),
         data={"company": erpnext_company, "accounts": json.dumps(all_accounts)}
     )
+    logging.info("Response: {}".format(response.text))
     logging.info("Accounts sent")
+
+    logging.info("Sending all parties")
+    response = session.post("{}/api/method/erpnext.erpnext_integrations.tally_migration.create_parties".format(ERPNEXT_PATH),
+        data={"company": erpnext_company, "parties": json.dumps(parties)}
+    )
+    logging.info("Response: {}".format(response.text))
+    logging.info("Parties sent")
+
+
+def migrate_vouchers(session, tally_company, erpnext_company):
+    logging.info("Querying Tally Voucher Count")
+    voucher_count = get_voucher_count(tally_company)
+    logging.info("Tally Vocuhers Found : {}".format(voucher_count))
+
+    for start_date, end_date in get_date_segments(tally_company, voucher_count):
+        logging.info("Querying Tally Vouchers for {} to {}".format(start_date, end_date))
+        vouchers = get_vouchers(tally_company, start_date, end_date)
+        logging.info("Tally Vouchers Found : {}".format(len(vouchers)))
+
+        logging.info("Sending Tally Vouchers for {} to {}".format(start_date, end_date))
+        response = session.post("{}/api/method/erpnext.erpnext_integrations.tally_migration.create_vouchers".format(ERPNEXT_PATH),
+            data={"company": erpnext_company, "vouchers": json.dumps(vouchers)}
+        )
+        logging.info("Response: {}".format(response.text))
+        logging.info("Vouchers sent")
+        return
 
 
 def get_group_accounts(tally_company):
@@ -142,16 +176,25 @@ def get_accounts(tally_company):
     collection = response.ENVELOPE.BODY.DATA.COLLECTION
     accounts = collection.find_all("LEDGER")
     account_list = []
+    parties = []
     for account in accounts:
         parent_account = get_parent_account(account)
         if parent_account in ("Sundry Creditors", "Sundry Debtors"):
-            continue
-        account_list.append({
-            "account_name": account["NAME"],
-            "is_group": 0,
-            "parent_account": parent_account,
-        })
-    return account_list
+            account_party_mapping = {
+                "Sundry Creditors": "Supplier",
+                "Sundry Debtors": "Customer"
+            }
+            parties.append({
+                "party_type": account_party_mapping[parent_account],
+                "party_name": account["NAME"],
+            })
+        else:
+            account_list.append({
+                "account_name": account["NAME"],
+                "is_group": 0,
+                "parent_account": parent_account,
+            })
+    return account_list, parties
 
 
 def get_parent_account(account):
@@ -165,8 +208,96 @@ def get_parent_account(account):
     return account.PARENT.string
 
 
+def get_voucher_count(tally_company):
+    response = requests.post(TALLY_PATH, data=voucher_count_query.format(tally_company))
+    response = bs(sanitize(response.text), "xml")
+    result = int(response.ENVELOPE.BODY.DATA.RESULT.string)
+    return result
+
+
+VOUCHER_BATCH_SIZE = 200
+def get_date_segments(tally_company, voucher_count):
+    company_start_date, company_end_date = get_company_period(tally_company)
+    difference = company_end_date - company_start_date
+    daily_voucher_count = voucher_count // difference.days
+    days_to_batch_size = VOUCHER_BATCH_SIZE // daily_voucher_count
+    start = company_start_date
+    while start <= company_end_date:
+        end = start + timedelta(days=days_to_batch_size)
+        yield (start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
+        start = end + timedelta(days=1)
+
+
+def get_company_period(tally_company):
+    response = requests.post(TALLY_PATH, data=company_period_query.format(tally_company))
+    response = bs(sanitize(response.text), "xml")
+
+    start = response.ENVELOPE.BODY.DATA.COLLECTION.COMPANY.STARTINGFROM.string
+    start = datetime.strptime(start, "%Y%m%d")
+
+    end = response.ENVELOPE.BODY.DATA.COLLECTION.COMPANY.ENDINGAT.string
+    end = datetime.strptime(end, "%Y%m%d")
+
+    return (start, end)
+
+
+def get_vouchers(tally_company, start_date, end_date):
+    #response = requests.post(TALLY_PATH, data=voucher_register_query.format(tally_company, start_date, end_date))
+    #response = bs(sanitize(response.text), "xml")
+    with open("result.xml", "rb") as f:
+        response = f.read().decode('utf_8', 'ignore')
+    response = bs(sanitize(emptify(response)), "xml")
+    collection = response.ENVELOPE.BODY.DATA
+    messages = collection.find_all("TALLYMESSAGE")
+    voucher_list = []
+    for message in messages:
+        try:
+            voucher = message.VOUCHER
+            if voucher is None:
+                continue
+            voucher_type_mapping = {
+                "Journal": transform_journal_voucher,
+            }
+            function = voucher_type_mapping.get(voucher.VOUCHERTYPENAME.string)
+            if function:
+                voucher = function(voucher)
+                voucher_list.append(voucher)
+        except:
+            import traceback
+            traceback.print_exc()
+    return voucher_list
+
+
+def transform_journal_voucher(xml):
+    accounts = []
+    for ledger_entry in xml.find_all("ALLLEDGERENTRIES.LIST"):
+        account = {
+            "account": ledger_entry.LEDGERNAME.string,
+            "is_party": ledger_entry.ISPARTYLEDGER.string == "Yes",
+        }
+        amount = Decimal(ledger_entry.AMOUNT.string)
+        if amount > 0:
+            account["credit_in_account_currency"] = str(abs(amount))
+        else:
+            account["debit_in_account_currency"] = str(abs(amount))
+        accounts.append(account)
+    voucher = {
+        "voucher_type": "Journal",
+        "guid": xml.GUID.string,
+        "posting_date": xml.DATE.string,
+        "accounts": accounts,
+    }
+    return voucher
+
+
 def sanitize(string):
     return re.sub("&#4;", "", string)
+
+
+def emptify(string):
+    string = re.sub(r"<\w+/>", "", string)
+    string = re.sub(r"\r\n", "", string)
+    return string
 
 
 if __name__ == "__main__":
