@@ -143,7 +143,7 @@ voucher_register_query = """
         <VERSION>1</VERSION>
         <TALLYREQUEST>Export</TALLYREQUEST>
         <TYPE>Data</TYPE>
-        <ID>Day Book</ID>
+        <ID>Voucher Register</ID>
     </HEADER>
     <BODY>
         <DESC>
