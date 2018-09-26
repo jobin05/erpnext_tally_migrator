@@ -263,6 +263,7 @@ def get_vouchers(tally_company, start_date, end_date):
                 "Purchase": transform_purchase_voucher,
                 "Payment": transform_payment_voucher,
                 "Credit Note": transform_credit_note_voucher,
+                "Receipt": transform_receipt_voucher,
             }
             function = voucher_type_mapping.get(voucher.VOUCHERTYPENAME.string)
             if function:
@@ -377,6 +378,28 @@ def transform_credit_note_voucher(xml):
         accounts.append(account)
     voucher = {
         "voucher_type": "Credit Note",
+        "guid": xml.GUID.string,
+        "posting_date": xml.DATE.string,
+        "accounts": accounts,
+    }
+    return voucher
+
+
+def transform_receipt_voucher(xml):
+    accounts = []
+    for ledger_entry in xml.find_all("ALLLEDGERENTRIES.LIST"):
+        account = {
+            "account": ledger_entry.LEDGERNAME.string,
+            "is_party": ledger_entry.ISPARTYLEDGER.string == "Yes",
+        }
+        amount = Decimal(ledger_entry.AMOUNT.string)
+        if amount > 0:
+            account["credit_in_account_currency"] = str(abs(amount))
+        else:
+            account["debit_in_account_currency"] = str(abs(amount))
+        accounts.append(account)
+    voucher = {
+        "voucher_type": "Receipt",
         "guid": xml.GUID.string,
         "posting_date": xml.DATE.string,
         "accounts": accounts,
