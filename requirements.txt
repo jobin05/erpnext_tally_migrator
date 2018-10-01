@@ -1,2 +1,6 @@
 beautifulsoup4
+pyinstaller
+pyqt5
 requests
+lxml
+
